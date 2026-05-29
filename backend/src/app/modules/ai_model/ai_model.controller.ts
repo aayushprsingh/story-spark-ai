@@ -4,7 +4,7 @@ import ApiError from "../../../errors/api_error";
 import catchAsync from "../../../shared/catch_async";
 import sendResponse from "../../../shared/send_response";
 import { AiModelService } from "./ai_model.service";
-import { IRemixPayload, ITranslatePayload } from "./ai_model.interface";
+import { IRemixPayload, ITranslatePayload, IChatPayload } from "./ai_model.interface";
 import { getToken } from "../../middleware/token";
 import { reserveGuestQuota } from "./quota.service";
 import {
@@ -150,6 +150,51 @@ const aiFreeModelTranslate = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const aiModelChat = catchAsync(async (req: Request, res: Response) => {
+  const payload = req.body as IChatPayload;
+  const guard = res.locals.quotaRefundGuard;
+
+  if (!guard) {
+    throw new ApiError(
+      httpStatus.INTERNAL_SERVER_ERROR,
+      "Quota guard missing — checkRequestLimit middleware required"
+    );
+  }
+
+  await runWithQuotaCleanup(guard, async () => {
+    const token = await getToken(req);
+    const result = await AiModelService.aiModelChat(payload, token);
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Chat response generated successfully!",
+      data: result,
+    });
+  });
+});
+
+const aiFreeModelChat = catchAsync(async (req: Request, res: Response) => {
+  const payload = req.body as IChatPayload;
+  let userId = req.cookies.userId as string | undefined;
+
+  if (!userId) {
+    userId = Math.random().toString(36).substring(7);
+    res.cookie("userId", userId, { maxAge: 30 * 24 * 60 * 60 * 1000 });
+  }
+
+  const guard = createGuestQuotaGuard(userId);
+  await runWithQuotaCleanup(guard, async () => {
+    await reserveGuestQuota(userId);
+    const result = await AiModelService.aiFreeModelChat(payload);
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Chat response generated successfully!",
+      data: result,
+    });
+  });
+});
+
 export const AiModelController = {
   aiModelGenerate,
   aiFreeModelGenerate,
@@ -159,5 +204,7 @@ export const AiModelController = {
   aiFreeModelRemix,
   aiModelTranslate,
   aiFreeModelTranslate,
+  aiModelChat,
+  aiFreeModelChat,
 };
 

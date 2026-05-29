@@ -12,12 +12,14 @@ import {
   IAlternateEndingPayload,
   IRemixPayload,
   ITranslatePayload,
+  IChatPayload,
 } from "./ai_model.interface";
 import {
   generateAlternateEndingsWithGemini,
   generateWithGeminiStories,
   generateRemixWithGemini,
   translateStoryWithGemini,
+  chatWithGemini,
 } from "./ai_model.utils";
 import { assertSuccessfulGeneration } from "./quota.lifecycle";
 
@@ -233,6 +235,69 @@ const aiFreeModelTranslate = async (payload: ITranslatePayload) => {
   }
 };
 
+const aiModelChat = async (payload: IChatPayload, token: ITokenPayload) => {
+  const { email } = token;
+  const { message, history = [] } = payload;
+
+  const currentDate = new Date();
+  const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+
+  const user = await User.findOne({ email: email });
+  if (!user) throw new ApiError(httpStatus.BAD_REQUEST, "User not found!");
+
+  if (user.lastRequestDate && user.lastRequestDate < firstDayOfMonth) {
+    await User.updateOne(
+      { email: email, lastRequestDate: { $lt: firstDayOfMonth } },
+      { $set: { requestsThisMonth: 0, lastRequestDate: currentDate } }
+    );
+  }
+
+  const requestLimit = REQUEST_LIMITS[user.subscriptionType as keyof typeof REQUEST_LIMITS] || REQUEST_LIMITS.free;
+
+  const updatedUser = await User.findOneAndUpdate(
+    { email: email, requestsThisMonth: { $lt: requestLimit } },
+    { $inc: { requestsThisMonth: 1 }, $set: { lastRequestDate: currentDate } },
+    { new: true }
+  );
+
+  if (!updatedUser) throw new ApiError(httpStatus.CONFLICT, "Monthly request limit exceeded!");
+
+  try {
+    const formattedHistory = history.map((msg) => ({
+      role: msg.role,
+      parts: [{ text: msg.parts }],
+    }));
+
+    const result = await raceGenerationWithTimeout(
+      () => chatWithGemini(message, formattedHistory),
+      AUTHENTICATED_GENERATION_TIMEOUT_MS
+    );
+    return result;
+  } catch (error) {
+    await User.updateOne({ email: email, requestsThisMonth: { $gt: 0 } }, { $inc: { requestsThisMonth: -1 } });
+    mapGenerationError(error, "AI chat failed.");
+  }
+};
+
+const aiFreeModelChat = async (payload: IChatPayload) => {
+  const { message, history = [] } = payload;
+
+  try {
+    const formattedHistory = history.map((msg) => ({
+      role: msg.role,
+      parts: [{ text: msg.parts }],
+    }));
+
+    const result = await raceGenerationWithTimeout(
+      () => chatWithGemini(message, formattedHistory),
+      FREE_GENERATION_TIMEOUT_MS
+    );
+    return result;
+  } catch (error) {
+    mapGenerationError(error, "AI chat failed.");
+  }
+};
+
 export const AiModelService = {
   aiModelGenerate,
   aiFreeModelGenerate,
@@ -242,4 +307,6 @@ export const AiModelService = {
   aiFreeModelRemix,
   aiModelTranslate,
   aiFreeModelTranslate,
+  aiModelChat,
+  aiFreeModelChat,
 };

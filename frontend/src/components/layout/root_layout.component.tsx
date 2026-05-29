@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import NavListComponent from "../hero/nav_list.component";
 import CookieConsentBanner from "../cookie-consent/cookie-consent.component";
 import FooterComponent from "../footer/footer.component";
+import ChatComponent from "../chat/Chat";
 
 
 
@@ -25,7 +26,7 @@ const RootLayout: React.FC<RootLayoutProps> = ({ children }) => {
       <CookieConsentBanner />
       <div className="flex-grow min-h-0">{children}</div>
       {!hideFooter && <FooterComponent />}
-
+      <ChatComponent />
     </div>
   );
 };

@@ -45,3 +45,13 @@ export interface IAlternateEndingPayload {
 
 }
 
+export interface IChatMessage {
+  role: "user" | "model";
+  parts: string;
+}
+
+export interface IChatPayload {
+  message: string;
+  history?: IChatMessage[];
+}
+
