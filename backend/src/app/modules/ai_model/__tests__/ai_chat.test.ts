@@ -26,7 +26,6 @@ jest.mock("../../user/user.model", () => ({
 
 const mockedChat = chatWithGemini as jest.MockedFunction<typeof chatWithGemini>;
 const mockedRace = raceGenerationWithTimeout as jest.MockedFunction<typeof raceGenerationWithTimeout>;
-const mockedUser = User as any;
 
 describe("AiModelService - Chat", () => {
   beforeEach(() => {
@@ -36,20 +35,9 @@ describe("AiModelService - Chat", () => {
 
   it("returns chat response on success for authenticated user", async () => {
     mockedChat.mockResolvedValue("Hello there!");
-    mockedUser.findOne.mockResolvedValue({
-      email: "user@example.com",
-      subscriptionType: "free",
-      requestsThisMonth: 0,
-      lastRequestDate: new Date(),
-    });
-    mockedUser.findOneAndUpdate.mockResolvedValue({
-      email: "user@example.com",
-      requestsThisMonth: 1,
-    });
 
     const result = await AiModelService.aiModelChat(
-      { message: "Hi", history: [] },
-      { email: "user@example.com" } as any
+      { message: "Hi", history: [] }
     );
 
     expect(result).toBe("Hello there!");
@@ -63,23 +51,6 @@ describe("AiModelService - Chat", () => {
 
     expect(result).toBe("Hi guest!");
     expect(mockedChat).toHaveBeenCalledWith("Hi", []);
-  });
-
-  it("throws conflict error when limit exceeded", async () => {
-    mockedUser.findOne.mockResolvedValue({
-      email: "user@example.com",
-      subscriptionType: "free",
-      requestsThisMonth: 100,
-      lastRequestDate: new Date(),
-    });
-    mockedUser.findOneAndUpdate.mockResolvedValue(null);
-
-    await expect(
-      AiModelService.aiModelChat(
-        { message: "Hi", history: [] },
-        { email: "user@example.com" } as any
-      )
-    ).rejects.toMatchObject({ statusCode: httpStatus.CONFLICT });
   });
 
   it("throws gateway timeout on timeout", async () => {

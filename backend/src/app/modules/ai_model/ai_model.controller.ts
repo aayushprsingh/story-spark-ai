@@ -5,7 +5,6 @@ import catchAsync from "../../../shared/catch_async";
 import sendResponse from "../../../shared/send_response";
 import { AiModelService } from "./ai_model.service";
 import { IRemixPayload, ITranslatePayload, IChatPayload } from "./ai_model.interface";
-import { getToken } from "../../middleware/token";
 import { reserveGuestQuota } from "./quota.service";
 import {
   createGuestQuotaGuard,
@@ -24,8 +23,7 @@ const aiModelGenerate = catchAsync(async (req: Request, res: Response) => {
   }
 
   await runWithQuotaCleanup(guard, async () => {
-    const token = await getToken(req);
-    const result = await AiModelService.aiModelGenerate(prompt, token);
+    const result = await AiModelService.aiModelGenerate(prompt);
     sendResponse(res, {
       statusCode: httpStatus.OK,
       success: true,
@@ -69,8 +67,7 @@ const aiModelAlternateEndings = catchAsync(async (req: Request, res: Response) =
   }
 
   await runWithQuotaCleanup(guard, async () => {
-    const token = await getToken(req);
-    const result = await AiModelService.aiModelAlternateEndings(payload, token);
+    const result = await AiModelService.aiModelAlternateEndings(payload);
     sendResponse(res, {
       statusCode: httpStatus.OK,
       success: true,
@@ -106,47 +103,89 @@ const aiFreeModelAlternateEndings = catchAsync(
 
 const aiModelRemix = catchAsync(async (req: Request, res: Response) => {
   const payload = req.body as IRemixPayload;
-  const token = await getToken(req);
-  const result = await AiModelService.aiModelRemix(payload, token);
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: "Story remixed successfully!",
-    data: result,
+  const guard = res.locals.quotaRefundGuard;
+
+  if (!guard) {
+    throw new ApiError(
+      httpStatus.INTERNAL_SERVER_ERROR,
+      "Quota guard missing — checkRequestLimit middleware required"
+    );
+  }
+
+  await runWithQuotaCleanup(guard, async () => {
+    const result = await AiModelService.aiModelRemix(payload);
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Story remixed successfully!",
+      data: result,
+    });
   });
 });
 
 const aiFreeModelRemix = catchAsync(async (req: Request, res: Response) => {
   const payload = req.body as IRemixPayload;
-  const result = await AiModelService.aiFreeModelRemix(payload);
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: "Story remixed successfully!",
-    data: result,
+  let userId = req.cookies.userId as string | undefined;
+
+  if (!userId) {
+    userId = Math.random().toString(36).substring(7);
+    res.cookie("userId", userId, { maxAge: 30 * 24 * 60 * 60 * 1000 });
+  }
+
+  const guard = createGuestQuotaGuard(userId);
+  await runWithQuotaCleanup(guard, async () => {
+    await reserveGuestQuota(userId);
+    const result = await AiModelService.aiFreeModelRemix(payload);
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Story remixed successfully!",
+      data: result,
+    });
   });
 });
 
 const aiModelTranslate = catchAsync(async (req: Request, res: Response) => {
   const payload = req.body as ITranslatePayload;
-  const token = await getToken(req);
-  const result = await AiModelService.aiModelTranslate(payload, token);
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: "Story translated successfully!",
-    data: result,
+  const guard = res.locals.quotaRefundGuard;
+
+  if (!guard) {
+    throw new ApiError(
+      httpStatus.INTERNAL_SERVER_ERROR,
+      "Quota guard missing — checkRequestLimit middleware required"
+    );
+  }
+
+  await runWithQuotaCleanup(guard, async () => {
+    const result = await AiModelService.aiModelTranslate(payload);
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Story translated successfully!",
+      data: result,
+    });
   });
 });
 
 const aiFreeModelTranslate = catchAsync(async (req: Request, res: Response) => {
   const payload = req.body as ITranslatePayload;
-  const result = await AiModelService.aiFreeModelTranslate(payload);
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: "Story translated successfully!",
-    data: result,
+  let userId = req.cookies.userId as string | undefined;
+
+  if (!userId) {
+    userId = Math.random().toString(36).substring(7);
+    res.cookie("userId", userId, { maxAge: 30 * 24 * 60 * 60 * 1000 });
+  }
+
+  const guard = createGuestQuotaGuard(userId);
+  await runWithQuotaCleanup(guard, async () => {
+    await reserveGuestQuota(userId);
+    const result = await AiModelService.aiFreeModelTranslate(payload);
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Story translated successfully!",
+      data: result,
+    });
   });
 });
 
@@ -162,8 +201,7 @@ const aiModelChat = catchAsync(async (req: Request, res: Response) => {
   }
 
   await runWithQuotaCleanup(guard, async () => {
-    const token = await getToken(req);
-    const result = await AiModelService.aiModelChat(payload, token);
+    const result = await AiModelService.aiModelChat(payload);
     sendResponse(res, {
       statusCode: httpStatus.OK,
       success: true,
